@@ -5,6 +5,7 @@ on:
       - main
     paths-ignore:
       - '**/README.md'
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -34,21 +35,24 @@ jobs:
       run: chmod +x gradlew
 
     - name: Build with Gradle
-      run: ./gradlew assembleDebug
-        -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/signing-key.jks 
-        -Pandroid.injected.signing.store.password=${{ secrets.PASSWORD }} 
-        -Pandroid.injected.signing.key.alias=${{ secrets.PASSWORD }}
+      run: |
+        ./gradlew assembleDebug --stacktrace --no-configuration-cache \
+        -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/signing-key.jks \
+        -Pandroid.injected.signing.store.password=${{ secrets.PASSWORD }} \
+        -Pandroid.injected.signing.key.alias=${{ secrets.PASSWORD }} \
         -Pandroid.injected.signing.key.password=${{ secrets.PASSWORD }}
       shell: bash
 
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v4
+      if: success()
       with:
-        name: app-debug
+        name: app-debug-${{ env.VERSION }}
         path: "app/build/outputs/apk/debug/app-debug.apk"
 
     - name: Create Release
       id: create_release
+      if: success()
       uses: softprops/action-gh-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -60,14 +64,9 @@ jobs:
         prerelease: true
         files: app/build/outputs/apk/debug/app-debug.apk
 
-#    - name: Upload APK to Discord
-#      shell: bash
-#      run: |
-#        contentbody=$( jq -Rsa . <<< "${{ github.event.head_commit.message }}" )
-#        curl -F "payload_json={\"content\":\"<@&1127494815693684826> **${{ env.VERSION }}**\n\n${contentbody:1:-1}\"}" -F "saikou_debug=@app/build/outputs/apk/debug/app-debug.apk" ${{ secrets.DISCORD_WEBHOOK_URL }}
-
     - name: Delete Old Pre-Releases
       id: delete-pre-releases
+      if: success()
       uses: sgpublic/delete-release-action@master
       with:
         pre-release-drop: true
