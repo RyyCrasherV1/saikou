@@ -34,7 +34,7 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Clean and sync dependencies
+    - name: Clean and Refresh Dependencies
       run: |
         ./gradlew clean --refresh-dependencies
       continue-on-error: true
