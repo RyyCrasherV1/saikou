@@ -9,9 +9,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Set variables
       run: |
@@ -21,42 +23,60 @@ jobs:
         echo "Version $VERSION"
         echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-    - name: set up JDK 17
+    - name: Setup JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
         cache: gradle
 
+    - name: Validate Gradle wrapper
+      uses: gradle/wrapper-validation-action@v1
+
+    - name: Make gradlew executable
+      run: chmod +x ./gradlew
+
+    - name: Check Gradle version
+      run: ./gradlew --version
+
     - name: Cook KeyStore
       run: echo "${{ secrets.KEYSTORE_B64 }}" | base64 -d > $GITHUB_WORKSPACE/signing-key.jks
-
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-
-    - name: Clean and Refresh Dependencies
-      run: |
-        ./gradlew clean --refresh-dependencies
       continue-on-error: true
 
-    - name: Build with Gradle
+    - name: Clean project
+      run: ./gradlew clean
+      continue-on-error: true
+
+    - name: Download dependencies
+      run: ./gradlew --refresh-dependencies
+      continue-on-error: true
+
+    - name: Build Debug APK
       run: |
-        ./gradlew assembleDebug --stacktrace --no-configuration-cache --refresh-dependencies \
+        ./gradlew assembleDebug \
+        --stacktrace \
+        --info \
+        --no-configuration-cache \
         -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/signing-key.jks \
         -Pandroid.injected.signing.store.password=${{ secrets.PASSWORD }} \
         -Pandroid.injected.signing.key.alias=${{ secrets.PASSWORD }} \
         -Pandroid.injected.signing.key.password=${{ secrets.PASSWORD }}
-      shell: bash
 
-    - name: Upload a Build Artifact
+    - name: List APK outputs
+      if: always()
+      run: |
+        echo "Checking APK output directory..."
+        ls -la app/build/outputs/apk/debug/ || echo "Directory not found"
+
+    - name: Upload Debug APK
       uses: actions/upload-artifact@v4
       if: success()
       with:
-        name: app-debug-${{ env.VERSION }}
-        path: "app/build/outputs/apk/debug/app-debug.apk"
+        name: saikou-debug-${{ env.VERSION }}
+        path: app/build/outputs/apk/debug/*.apk
+        if-no-files-found: error
 
     - name: Create Release
-      id: create_release
       if: success()
       uses: softprops/action-gh-release@v1
       env:
@@ -67,10 +87,9 @@ jobs:
         body: ${{ github.event.head_commit.message }}
         draft: false
         prerelease: true
-        files: app/build/outputs/apk/debug/app-debug.apk
+        files: app/build/outputs/apk/debug/*.apk
 
     - name: Delete Old Pre-Releases
-      id: delete-pre-releases
       if: success()
       uses: sgpublic/delete-release-action@master
       with:
